@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Admin</title>
+<style>
+:root{ --bg:#0f172a; --text:#e5e7eb; --muted:#94a3b8; }
+body{ margin:0; background:var(--bg); color:var(--text); font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+.container{ max-width:1100px; margin:0 auto; padding:20px }
+.panel{ background: rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.1); border-radius:16px; padding:16px; margin-bottom:16px }
+.row{ display:flex; gap:10px; align-items:center; flex-wrap:wrap }
+.input{ padding:12px; border-radius:10px; border:1px solid rgba(255,255,255,.2); background:rgba(255,255,255,.07); color:#fff; outline:none; }
+.btn{ padding:10px 14px; border-radius:10px; border:0; background:#16a34a; color:white; font-weight:800; cursor:pointer }
+table{ width:100%; border-collapse:separate; border-spacing:0 10px }
+th{ color:var(--muted); font-size:13px; text-align:left }
+td{ background: rgba(255,255,255,.05); padding:8px; border-top:1px solid rgba(255,255,255,.12); border-bottom:1px solid rgba(255,255,255,.12) }
+tr td:first-child{ border-left:1px solid rgba(255,255,255,.12); border-top-left-radius:12px; border-bottom-left-radius:12px }
+tr td:last-child{ border-right:1px solid rgba(255,255,255,.12); border-top-right-radius:12px; border-bottom-right-radius:12px }
+.hint{ color:var(--muted); font-size:13px }
+img.qr{ max-width:200px; border-radius:10px; border:1px dashed rgba(255,255,255,.2) }
+</style>
+</head>
+<body>
+<div class="container">
+<h1>Panel Admin</h1>
+<div class="panel">
+<h3>Configuración</h3>
+<div class="row">
+<input id="negocio" class="input" placeholder="Nombre del negocio" style="min-width:280px"/>
+<input id="qr" class="input" placeholder="URL imagen QR Instagram" style="min-width:280px"/>
+<button id="saveCfg" class="btn">Guardar</button>
+</div>
+<div class="hint" style="margin-top:6px">DNI exento por defecto: <strong>45035781</strong> (sin cooldown).</div>
+<div style="margin-top:10px"><img id="qrPrev" class="qr" alt="QR preview"/></div>
+</div>
+
+
+<div class="panel">
+<div class="row" style="justify-content:space-between">
+<h3>Premios</h3>
+<button id="add" class="btn">+ Agregar</button>
+</div>
+<table>
+<thead>
+<tr><th>Nombre</th><th>Imagen (URL)</th><th>%</th><th></th></tr>
+</thead>
+<tbody id="tbody"></tbody>
+</table>
+</div>
+<a href="/" class="hint">← Volver al inicio</a>
+</div>
+<script>
+async function getJSON(url){ const r = await fetch(url); const d = await r.json(); return d; }
+async function sendJSON(url, method, body){
+const r = await fetch(url, { method, headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+const d = await r.json().catch(()=>({})); if(!r.ok) throw new Error(d.error||'Error'); return d;
+}
+
+
+async function loadCfg(){
+const c = await getJSON('/api/config');
+document.getElementById('negocio').value = c.businessName || '';
+document.getElementById('qr').value = c.instagramQrUrl || '';
+document.getElementById('qrPrev').src = c.instagramQrUrl || '';
+}
+
+
+document.getElementById('saveCfg').addEventListener('click', async()=>{
+const businessName = document.getElementById('negocio').value.trim();
+const instagramQrUrl = document.getElementById('qr').value.trim();
+await sendJSON('/api/config','PUT',{ businessName, instagramQrUrl });
+document.getElementById('qrPrev').src = instagramQrUrl;
+alert('Configuración guardada');
+});
+
+
+async function loadPrizes(){
+const list = await getJSON('/api/prizes');
+const tb = document.getElementById('tbody'); tb.innerHTML='';
+list.forEach(p=>{
+const tr = document.createElement('tr');
+tr.innerHTML = `
+<td><input class="input" data-k="name" data-id="${p._id}" value="${escapeHtml(p.name)}"/></td>
+<td><input class="input" data-k="image" data-id="${p._id}" value="${escapeHtml(p.image||'')}"/></td>
+<td style="width:120px"><input class="input" data-k="weight" data-id="${p._id}" value="${Number(p.weight)||0}" inputmode="numeric"/></td>
+<td style="width:120px"><button class="btn" data-act="save" data-id="${p._id}">Guardar</button> <button class="btn" data-act="del" data-id="${p._id}" style="background:#ef4444">Borrar</button></td>
+`;
+tb.appendChild(tr);
+});
+}
+
+
+function escapeHtml(s){ return String(s).replace(/[&<>"']/g, m=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[m])); }
+
+
+// Handlers
+
+
+document.getElementById('add').addEventListener('click', async()=>{
+const name = prompt('Nombre del premio'); if(!name) return;
+const image = prompt('URL de imagen (opcional)')||'';
+const weight = Number(prompt('% de salir (número)')||0);
+await sendJSON('/api/prizes','POST',{ name, image, weight });
+await loadPrizes();
+});
+
+
+document.getElementById('tbody').addEventListener('click', async(e)=>{
+const btn = e.target.closest('button'); if(!btn) return;
+const id = btn.getAttribute('data-id'); const act = btn.getAttribute('data-act');
+if(act==='del'){
+if(confirm('¿Borrar premio?')){ await fetch(`/api/prizes/${id}`, { method:'DELETE' }); await loadPrizes(); }
+}
+if(act==='save'){
+const row = btn.closest('tr');
+const name = row.querySelector('[data-k="name"]').value.trim();
+const image = row.querySelector('[data-k="image"]').value.trim();
+const weight = Number(row.querySelector('[data-k="weight"]').value || 0);
+await sendJSON(`/api/prizes/${id}`, 'PUT', { name, image, weight });
+alert('Guardado');
+}
+});
+
+
+(async function init(){ await loadCfg(); await loadPrizes(); })();
+
+// Cerrar sesión al salir de /admin (puede dispararse también en reload)
+  window.addEventListener('pagehide', () => {
+    if (navigator.sendBeacon) {
+      // Enviamos un body vacío para cumplir con POST
+      const blob = new Blob([], { type: 'application/octet-stream' });
+      navigator.sendBeacon('/api/admin/logout', blob);
+    } else {
+      // Fallback
+      fetch('/api/admin/logout', { method:'POST', keepalive:true });
+    }
+  });
+</script>
+</body>
+</html>

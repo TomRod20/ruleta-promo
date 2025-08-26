@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Premio</title>
+<style>
+:root{ --bg:#0f172a; --text:#e5e7eb; --muted:#94a3b8; }
+body{ margin:0; background:var(--bg); color:var(--text); font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+
+.wrap{
+  min-height:100vh;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding:20px;
+}
+
+.card{
+  background: rgba(255,255,255,.06);
+  border:1px solid rgba(255,255,255,.1);
+  border-radius:16px;
+  padding:24px;
+  max-width:900px;
+  width:100%;
+  text-align:center;
+}
+
+.title{ font-size:40px; margin:0 0 10px; font-weight:900 }
+.prize{ font-size:24px; font-weight:800 }
+
+/* 👉 SIEMPRE EN COLUMNA */
+.row{
+  display:flex;
+  flex-direction:column;
+  gap:20px;
+  align-items:center;
+  justify-content:flex-start;
+  margin-top:14px;
+}
+
+.qr{
+  max-width:260px;
+  width:clamp(180px, 45vw, 260px);
+  border-radius:12px;
+  border:1px dashed rgba(255,255,255,.25);
+}
+
+.btn{
+  display:inline-block;
+  padding:12px 18px;
+  border-radius:12px;
+  background:#111827;
+  color:#fff;
+  text-decoration:none;
+  margin-top:16px;
+  border:1px solid rgba(255,255,255,.2);
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="card">
+    <h1 class="title">🎉 ¡Felicidades!</h1>
+    <div class="prize">Ganaste: <span id="pName">—</span></div>
+
+    <div class="row">
+      <img id="pImg" class="qr" alt="Premio" />
+      <div>
+        <div>Para reclamar:</div>
+        <ol style="text-align:left">
+          <li>Seguinos en Instagram escaneando el QR.</li>
+          <!-- 🔽 acá se inserta el DNI real -->
+          <li>Presentá tu DNI <strong id="dniText">—</strong> en Caja.</li>
+        </ol>
+        <img id="qr" class="qr" alt="QR Instagram" />
+      </div>
+    </div>
+
+    <a class="btn" href="/">⬅️ Volver al inicio</a>
+  </div>
+</div>
+
+<script>
+async function fetchJSON(url){
+  const r = await fetch(url);
+  const data = await r.json().catch(()=>({}));
+  if(!r.ok) throw new Error(data.error||'Error');
+  return data;
+}
+
+(async function init(){
+  const dni = location.pathname.split('/').pop(); // /premio/:dni
+  try{
+    const data = await fetchJSON(`/api/last-prize/${dni}`);
+    document.title = `Premio | ${data.businessName || 'Tu Negocio'}`;
+    document.getElementById('pName').textContent = data.prizeName;
+
+    // 👉 muestra el DNI ingresado
+    document.getElementById('dniText').textContent = dni;
+
+    const img = document.getElementById('pImg');
+    if(data.prizeImage){ img.src = data.prizeImage; } else { img.style.display='none'; }
+
+    // QR local empaquetado en el proyecto
+    const qr = document.getElementById('qr');
+    qr.src = '/assets/qr.jpeg';
+  }catch(e){
+    document.querySelector('.card').innerHTML = `
+      <h2>No hay premio registrado para este DNI.</h2>
+      <a class="btn" href="/">Volver</a>`;
+  }
+})();
+</script>
+</body>
+</html>

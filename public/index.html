@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Ruleta | Home</title>
+<style>
+:root{ --bg:#0f172a; --text:#e5e7eb; --muted:#94a3b8; --accent:#22c55e; }
+*{ box-sizing: border-box }
+body{ margin:0; background:var(--bg); color:var(--text); font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+
+/* 👉 Siempre columna (ruleta arriba / controles abajo) */
+.wrap{
+  display:flex;
+  flex-direction:column !important;
+  gap:16px;
+  align-items:center;
+  justify-content:flex-start;
+  min-height:100svh;
+  padding:16px;
+}
+
+/* Panels algo más angostos para que no “llenan” de lado a lado */
+.panel{
+  background: rgba(255,255,255,.06);
+  border:1px solid rgba(255,255,255,.1);
+  border-radius:16px;
+  padding:16px;
+  width:clamp(360px, 88vw, 860px);
+}
+
+.left{ display:flex; flex-direction:column; align-items:center; justify-content:center; }
+.right{ width:clamp(360px, 88vw, 860px); }
+
+/* ===== Brand arriba de la ruleta ===== */
+.brand{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:12px;
+  margin-bottom:8px;
+  text-align:center;
+}
+.brand img{
+  width:clamp(36px, 8vw, 64px);
+  height:auto;
+  border-radius:10px;
+  filter: drop-shadow(0 4px 8px rgba(0,0,0,.35));
+}
+.brand .brand-title{
+  font-weight:900;
+  font-size:clamp(18px, 3.2vw, 28px);
+  letter-spacing:.3px;
+}
+
+.title{ font-weight:800; font-size:26px; margin:0 0 8px }
+.hint{ color:var(--muted); font-size:14px }
+.row{ display:flex; gap:8px; align-items:center }
+.input{
+  flex:1; padding:14px; border-radius:12px;
+  border:1px solid rgba(255,255,255,.2);
+  background:rgba(255,255,255,.07); color:#fff; outline:none;
+}
+.btn{ padding:14px 18px; border-radius:12px; border:0; background:#16a34a; color:white; font-weight:800; cursor:pointer }
+.msg{ margin-top:8px; min-height:24px; color:#ffd28f }
+.pointer{
+  rotate: 180deg;
+  width:0; height:0;
+  border-left:16px solid transparent; border-right:16px solid transparent; border-bottom:22px solid #fff;
+  filter:drop-shadow(0 4px 8px rgba(0,0,0,.6));
+  margin:0 auto 8px;
+}
+
+/* 🔽 Ruleta más chica: no ocupa toda la altura */
+canvas{
+  display:block;
+  width:clamp(420px, 70vmin, 720px);
+  height:auto;
+}
+
+/* Lista igual, con margen visual */
+.list{ display:grid; grid-template-columns: repeat(2, 1fr); gap:10px; }
+.card{ background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.12); border-radius:10px; padding:10px }
+.card img{ max-width:140px; border-radius:8px; margin-top:6px }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <!-- RUEDA ARRIBA -->
+  <div class="left panel">
+    <!-- 🔹 Título + Logo -->
+    <div class="brand">
+      <img src="https://d22fxaf9t8d39k.cloudfront.net/859cc1a5b97e733b2faf39d728158c6edba3ce6a8374f4bd3a71367006763e7d134802.png" alt="Logo Dietetica Feliz" />
+      <div class="brand-title">Dietetica Feliz</div>
+    </div>
+
+    <div class="pointer"></div>
+    <canvas id="wheel" width="700" height="700"></canvas>
+  </div>
+
+  <!-- CONTROLES Y LISTA ABAJO -->
+  <div class="right panel">
+    <h1 class="title">🎯 Ruleta de Premios</h1>
+    <div class="hint">Ingresá tu DNI (8 dígitos) para girar. 1 vez cada 24 hs.</div>
+    <div style="height:10px"></div>
+    <div class="row">
+      <input id="dni" class="input" placeholder="DNI (8 dígitos)" inputmode="numeric" pattern="\d{8}" />
+      <button id="spinBtn" class="btn">Girar</button>
+    </div>
+    <div id="msg" class="msg"></div>
+
+    <div style="height:16px"></div>
+    <div id="prizeList" class="list"></div>
+  </div>
+</div>
+
+<script>
+async function fetchJSON(url, opts={}){
+  const r = await fetch(url, { headers:{ 'Content-Type':'application/json' }, ...opts });
+  const data = await r.json().catch(()=>({}));
+  if(!r.ok) throw Object.assign(new Error(data.error || 'Error'), { data, status:r.status });
+  return data;
+}
+
+let prizes = [];
+
+/* ==== SEGMENTACIÓN VISUAL IGUALITARIA ==== */
+function calcSegmentsEqual(list){
+  const n = Math.max(1, list.length);
+  const step = (Math.PI*2)/n;
+  let start = 0;
+  return list.map((p)=>{
+    const seg = { prize:p, a0:start, a1:start+step };
+    start += step;
+    return seg;
+  });
+}
+
+const canvas = document.getElementById('wheel');
+const ctx = canvas.getContext('2d');
+
+function drawWheel(segs, angle=0){
+  const r = canvas.width/2;
+  const C = {x:r,y:r};
+
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  ctx.save(); ctx.translate(C.x,C.y); ctx.rotate(angle);
+
+  // fondo
+  ctx.beginPath(); ctx.arc(0,0,r-6,0,Math.PI*2); ctx.fillStyle = '#0b1229'; ctx.fill();
+
+  // segmentos
+  segs.forEach((s,i)=>{
+    ctx.beginPath(); ctx.moveTo(0,0); ctx.arc(0,0,r-16,s.a0,s.a1); ctx.closePath();
+    ctx.fillStyle = `hsl(${(i*360/segs.length)|0} 80% 45%)`; ctx.fill();
+    ctx.strokeStyle='rgba(0,0,0,.35)'; ctx.lineWidth=2; ctx.stroke();
+
+    const mid=(s.a0+s.a1)/2; ctx.save(); ctx.rotate(mid); ctx.translate(r-130,0); ctx.rotate(Math.PI/2);
+    ctx.fillStyle='#fff'; ctx.font='bold 24px system-ui'; ctx.textAlign='center'; ctx.textBaseline='middle';
+    wrapText(ctx, s.prize.name, 0, 0, 200, 26); ctx.restore();
+  });
+
+  // borde
+  ctx.beginPath(); ctx.arc(0,0,r-10,0,Math.PI*2); ctx.lineWidth=14; ctx.strokeStyle='rgba(255,255,255,.25)'; ctx.stroke();
+
+  // centro
+  ctx.beginPath(); ctx.arc(0,0,50,0,Math.PI*2); ctx.fillStyle='#111827'; ctx.fill(); ctx.lineWidth=4; ctx.strokeStyle='#fff'; ctx.stroke();
+
+  ctx.restore();
+}
+
+function wrapText(ctx, text, x, y, maxWidth, lineHeight){
+  const words = String(text).split(' '); let line=''; const lines=[];
+  for(let i=0;i<words.length;i++){
+    const test = line+words[i]+' ';
+    if(ctx.measureText(test).width>maxWidth && i>0){ lines.push(line.trim()); line = words[i]+' '; }
+    else line = test;
+  }
+  lines.push(line.trim());
+  const offset = -(lines.length-1)*lineHeight/2;
+  lines.forEach((l,i)=>ctx.fillText(l,x,y+offset+i*lineHeight));
+}
+
+(async function init(){
+  prizes = await fetchJSON('/api/prizes');
+  const segs = calcSegmentsEqual(prizes);
+  drawWheel(segs, 0);
+
+  // Lista sin porcentajes
+  const list = document.getElementById('prizeList'); list.innerHTML='';
+  prizes.forEach(p=>{
+    const div = document.createElement('div');
+    div.className='card';
+    div.innerHTML = `<strong>${p.name}</strong>${p.image?`<div><img src="${p.image}" alt="${p.name}"/></div>`:''}`;
+    list.appendChild(div);
+  });
+})();
+
+let ang = 0; let spinning = false;
+function animateTo(targetAngle, duration){
+  return new Promise(res=>{
+    const start = performance.now(); const a0 = ang; const delta = targetAngle - a0;
+    spinning = true;
+    function tick(t){
+      const p = Math.min(1, (t-start)/duration); const ease = 1 - Math.pow(1-p,3);
+      ang = a0 + delta*ease; drawWheel(calcSegmentsEqual(prizes), ang);
+      if(p<1) requestAnimationFrame(tick); else { spinning=false; res(); }
+    }
+    requestAnimationFrame(tick);
+  });
+}
+
+function findSegmentByPrize(p){
+  const segs = calcSegmentsEqual(prizes);
+  return segs.find(s => s.prize._id === p._id) || segs[0];
+}
+
+const msg = document.getElementById('msg');
+const btn = document.getElementById('spinBtn');
+btn.addEventListener('click', async ()=>{
+  if(spinning) return;
+  msg.textContent = '';
+  const dni = String(document.getElementById('dni').value||'').replace(/\D+/g,'');
+  if(!/^\d{8}$/.test(dni)){ msg.textContent = 'Ingresá un DNI válido (8 dígitos).'; return; }
+  try{
+    const r = await fetchJSON('/api/spin', { method:'POST', body: JSON.stringify({ dni }) });
+    const seg = findSegmentByPrize(r.prize);
+    const mid = (seg.a0 + seg.a1)/2; // queremos que quede arriba (-PI/2)
+    const vueltas = 6 + Math.floor(Math.random()*2);
+    const target = (vueltas*Math.PI*2) + (3*Math.PI/2) - mid;
+    await animateTo(target, 4800);
+    location.href = r.redirect;
+  }catch(err){
+    msg.textContent = (err.data && err.data.error) ? err.data.error : 'Error desconocido';
+  }
+});
+</script>
+</body>
+</html>
