@@ -185,6 +185,11 @@ app.get('/premio/:dni', (req, res) => {
 // Static general (DESPUÉS de las rutas /admin y /premio)
 app.use(express.static(path.join(__dirname, '..', 'public')));
 
+// ping de salud (ligero)
+app.get('/health', (req, res) => {
+  res.json({ ok: true, t: Date.now() });
+});
+
 // ======== Bootstrap ========
 const port = process.env.PORT || 3000;
 
